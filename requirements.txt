@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pydantic-settings
+python-multipart
+pydub
+aiofiles
+pytest
+httpx
+pytest-httpx
+rapidfuzz
+jellyfish

@@ -1,0 +1,400 @@
+/**
+ * receipt.css — Thermal Receipt Preview & Print Styles.
+ *
+ * Screen styles:  Receipt displayed inside a modal overlay, styled to
+ *                 look like a real 80mm thermal printer receipt on a
+ *                 dark backdrop.
+ *
+ * Print styles:   @media print strips away everything except the receipt
+ *                 paper itself — no modal chrome, no backdrop, no buttons.
+ *                 Optimised for 80mm thermal paper width (302px).
+ */
+
+/* ================================================================
+   RECEIPT MODAL OVERLAY  (screen only)
+   ================================================================ */
+
+.receipt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+  background: rgba(10, 18, 16, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.receipt-modal-backdrop.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ================================================================
+   RECEIPT PAPER  (the white "ticket")
+   ================================================================ */
+
+.receipt-paper {
+  width: 100%;
+  max-width: 340px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    0 20px 60px rgba(0, 0, 0, 0.25);
+  padding: 28px 22px 24px;
+  font-family: "Courier New", Courier, "Lucida Console", monospace;
+  color: #111;
+  font-size: 13px;
+  line-height: 1.55;
+  transform: translateY(20px) scale(0.97);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+}
+
+.receipt-modal-backdrop.visible .receipt-paper {
+  transform: translateY(0) scale(1);
+}
+
+/* Torn edge effect at the bottom — pure CSS */
+.receipt-paper::after {
+  content: "";
+  position: absolute;
+  bottom: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: linear-gradient(135deg, #fff 33.33%, transparent 33.33%),
+              linear-gradient(225deg, #fff 33.33%, transparent 33.33%);
+  background-size: 12px 8px;
+  background-position: left bottom;
+}
+
+/* ================================================================
+   RECEIPT HEADER  (shop name, bill number, datetime)
+   ================================================================ */
+
+.receipt-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.receipt-shop-name {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin: 0 0 2px;
+  color: #000;
+}
+
+.receipt-shop-tagline {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: #666;
+  margin: 0 0 10px;
+}
+
+.receipt-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #444;
+  margin-top: 8px;
+}
+
+.receipt-meta-label {
+  color: #888;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* ================================================================
+   DIVIDERS  — dashed lines mimicking thermal receipt
+   ================================================================ */
+
+.receipt-divider {
+  border: none;
+  border-top: 1.5px dashed #bbb;
+  margin: 10px 0;
+}
+
+.receipt-divider-thick {
+  border: none;
+  border-top: 2px solid #333;
+  margin: 10px 0;
+}
+
+/* ================================================================
+   ITEMS TABLE
+   ================================================================ */
+
+.receipt-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+
+.receipt-items-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #888;
+  border-bottom: 1px solid #ddd;
+  padding: 4px 0;
+  font-weight: 600;
+}
+
+.receipt-items-table td {
+  padding: 5px 0;
+  vertical-align: top;
+}
+
+.receipt-items-table .col-item {
+  text-align: left;
+  width: 44%;
+}
+
+.receipt-items-table .col-qty {
+  text-align: center;
+  width: 12%;
+}
+
+.receipt-items-table .col-price {
+  text-align: right;
+  width: 22%;
+}
+
+.receipt-items-table .col-total {
+  text-align: right;
+  width: 22%;
+  font-weight: 700;
+}
+
+/* ================================================================
+   TOTALS SECTION
+   ================================================================ */
+
+.receipt-totals {
+  margin: 4px 0;
+}
+
+.receipt-total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 12px;
+  color: #444;
+}
+
+.receipt-total-row.discount-row {
+  color: var(--color-primary, #2f8f6f);
+}
+
+.receipt-grand-total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0 4px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #000;
+  letter-spacing: 0.5px;
+}
+
+.receipt-item-count {
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  margin: 4px 0 0;
+}
+
+/* ================================================================
+   WARNINGS
+   ================================================================ */
+
+.receipt-warnings {
+  margin: 8px 0 4px;
+  padding: 6px 8px;
+  background: #fff8e6;
+  border: 1px solid #f0dda0;
+  border-radius: 3px;
+}
+
+.receipt-warning-item {
+  font-size: 10px;
+  color: #8a6d00;
+  padding: 2px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.receipt-warning-item::before {
+  content: "⚠";
+  flex-shrink: 0;
+}
+
+/* ================================================================
+   FOOTER  (thank you message)
+   ================================================================ */
+
+.receipt-footer {
+  text-align: center;
+  margin-top: 14px;
+}
+
+.receipt-thank-you {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #222;
+  margin: 0 0 4px;
+}
+
+.receipt-footer-note {
+  font-size: 9px;
+  color: #aaa;
+  margin: 0;
+}
+
+/* ================================================================
+   ACTION BUTTONS  (below the receipt paper — screen only)
+   ================================================================ */
+
+.receipt-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  width: 100%;
+  max-width: 340px;
+  justify-content: center;
+}
+
+.receipt-actions .btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.receipt-actions .btn:active {
+  transform: scale(0.97);
+}
+
+.btn-print-receipt {
+  background: var(--color-primary, #2f8f6f);
+  color: #fff;
+}
+
+.btn-print-receipt:hover {
+  background: var(--color-primary-hover, #257a5d);
+}
+
+.btn-new-order {
+  background: var(--color-secondary, #eef1f1);
+  color: var(--color-secondary-text, #3c4644);
+}
+
+.btn-new-order:hover {
+  background: #e0e5e4;
+}
+
+.btn-icon-inline {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ================================================================
+   PRINT STYLES  — only the receipt paper prints
+   ================================================================ */
+
+@media print {
+  /* Hide everything */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show only the receipt paper */
+  .receipt-modal-backdrop,
+  .receipt-modal-backdrop * {
+    visibility: visible !important;
+  }
+
+  /* Remove modal styling, full-page the paper */
+  .receipt-modal-backdrop {
+    position: static !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  /* Size the paper for 80mm thermal */
+  .receipt-paper {
+    max-width: 302px !important;
+    width: 302px !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 12px 14px 10px !important;
+    transform: none !important;
+    font-size: 12px !important;
+  }
+
+  .receipt-paper::after {
+    display: none !important;
+  }
+
+  /* Hide buttons in print */
+  .receipt-actions {
+    display: none !important;
+  }
+
+  /* Ensure black text on white */
+  .receipt-paper,
+  .receipt-paper * {
+    color: #000 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .receipt-warnings {
+    border-color: #999 !important;
+    background: #fff !important;
+  }
+
+  .receipt-divider {
+    border-top-color: #000 !important;
+  }
+
+  .receipt-divider-thick {
+    border-top-color: #000 !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: 80mm auto;
+    margin: 2mm;
+  }
+}

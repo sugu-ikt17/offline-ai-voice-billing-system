@@ -1,0 +1,12 @@
+{
+  "tea": ["tea", "tee", "ti", "டீ", "chai", "chay"],
+  "coffee": ["coffee", "kaapi", "kapi", "copy", "காபி", "coffer", "cofi", "coffey", "cofee", "caffe"],
+  "puri": ["puri", "poori", "poorii", "பூரி", "curry"],
+  "dosa": ["dosa", "dosai", "தோசை", "doza", "dosay", "dhosa", "thosai"],
+  "idli": ["idly", "idli", "இட்லி", "itly", "idlee", "iddly"],
+  "vada": ["vada", "wada", "வடை", "vadai", "vaday", "vade"],
+  "sambar": ["sambar", "sambhar", "saambar"],
+  "pongal": ["pongal", "pongall", "pongul"],
+  "upma": ["upma", "uppma", "uppuma"],
+  "parotta": ["parotta", "parota", "paratha"]
+}

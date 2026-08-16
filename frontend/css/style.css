@@ -1,0 +1,115 @@
+/**
+ * style.css — page layout only.
+ *
+ * Component appearance lives in components.css; design tokens live in
+ * variables.css. This file is strictly responsible for arranging
+ * components on the page (header, main grid, footer, responsiveness).
+ */
+
+@import url("variables.css");
+@import url("components.css");
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-main);
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+h1, h2, h3 {
+  margin: 0;
+}
+
+/* ================= Header ================= */
+.app-header {
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+}
+
+.app-header-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.app-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* ================= Page / main layout ================= */
+.page {
+  max-width: var(--page-max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-6) var(--space-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ================= Footer ================= */
+.app-footer {
+  text-align: center;
+  padding: var(--space-6) var(--space-4) var(--space-8);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* ================= Responsive ================= */
+@media (max-width: 640px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-4);
+  }
+
+  .page {
+    padding: 0 var(--space-4) var(--space-8);
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: var(--space-4);
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: var(--space-2);
+    font-size: var(--font-size-sm);
+  }
+
+  .toast-container {
+    left: var(--space-3);
+    right: var(--space-3);
+    top: var(--space-3);
+    max-width: none;
+  }
+
+  .modal-dialog {
+    padding: var(--space-5);
+  }
+}

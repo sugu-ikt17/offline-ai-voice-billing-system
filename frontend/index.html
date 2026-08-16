@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline AI Voice Billing System</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/receipt.css" />
+</head>
+<body>
+
+  <!-- ================= 1. Header ================= -->
+  <header class="app-header">
+    <div class="app-header-brand">
+      <h1 class="app-title">Offline AI Voice Billing System</h1>
+      <p class="app-subtitle">Menu Management</p>
+    </div>
+
+    <div class="status-indicator checking" id="status-indicator">
+      <span class="status-dot"></span>
+      <span id="status-text">Checking backend...</span>
+    </div>
+  </header>
+
+  <main class="page">
+
+    <!-- ================= 2. Voice Recording Card ================= -->
+    <section class="card" id="voice-recording-card">
+      <div class="card-header-row">
+        <div class="card-title-group">
+          <h2 class="card-title">
+            <svg class="card-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+            <span>Voice Recording</span>
+          </h2>
+        </div>
+        <span class="status-badge idle" id="voice-status-badge">
+          <span class="badge-dot"></span>
+          <span id="voice-status-text">Idle</span>
+        </span>
+      </div>
+
+      <div class="voice-dashboard">
+        <div class="voice-timer-container">
+          <span class="recording-timer" id="recording-timer">00:00</span>
+        </div>
+
+        <div class="voice-btn-group">
+          <button type="button" class="btn btn-primary" id="start-rec-btn">
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+            <span>Start Recording</span>
+          </button>
+
+          <button type="button" class="btn btn-danger" id="stop-rec-btn" disabled>
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"/>
+            </svg>
+            <span>Stop Recording</span>
+          </button>
+
+          <button type="button" class="btn btn-secondary" id="send-voice-btn" disabled>
+            <span class="btn-spinner hidden" id="send-voice-spinner" aria-hidden="true"></span>
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+            <span>Send to Server</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="voice-playback-wrapper hidden" id="voice-playback-container">
+        <label class="section-sublabel">Audio Preview</label>
+        <audio id="voice-playback" controls class="voice-audio-player"></audio>
+      </div>
+    </section>
+
+    <!-- ================= 3. Recognized Text Card ================= -->
+    <section class="card" id="recognized-text-card">
+      <div class="card-header-row">
+        <h2 class="card-title">
+          <svg class="card-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Recognized Text</span>
+        </h2>
+      </div>
+
+      <div class="form-group">
+        <textarea
+          id="recognized-text"
+          class="recognized-textbox"
+          readonly
+          rows="2"
+          placeholder="Recognized speech will appear here after sending recording to server..."
+        ></textarea>
+      </div>
+    </section>
+
+    <!-- ================= 4. Order Summary Card ================= -->
+    <section class="card" id="order-summary-card">
+      <div class="card-header-row">
+        <h2 class="card-title">
+          <svg class="card-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          <span>Order Summary</span>
+        </h2>
+        <span class="badge hidden" id="order-items-count">0 items</span>
+      </div>
+
+      <div class="order-summary-body">
+        <div class="workflow-empty-state" id="order-summary-empty">
+          <p class="empty-text">No voice order processed yet. Click <strong>Start Recording</strong> above to place an order.</p>
+        </div>
+
+        <div class="processing-skeleton hidden" id="order-summary-skeleton">
+          <div class="skeleton-line shimmer"></div>
+          <div class="skeleton-line shimmer short"></div>
+        </div>
+
+        <div class="order-chips-list hidden" id="order-summary-list">
+          <!-- Dynamically injected items -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 5. Bill Preview Card ================= -->
+    <section class="card" id="bill-preview-card">
+      <div class="card-header-row">
+        <h2 class="card-title">
+          <svg class="card-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span>Bill Preview</span>
+        </h2>
+      </div>
+
+      <div class="bill-preview-body">
+        <div class="workflow-empty-state" id="bill-preview-empty">
+          <p class="empty-text">Itemized bill preview will generate automatically after processing.</p>
+        </div>
+
+        <div class="processing-skeleton hidden" id="bill-preview-skeleton">
+          <div class="skeleton-box shimmer"></div>
+        </div>
+
+        <div class="bill-receipt-wrapper hidden" id="bill-receipt-container">
+          <table class="bill-receipt-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="text-center">Qty</th>
+                <th class="text-right">Price</th>
+                <th class="text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="bill-table-body">
+              <!-- Dynamically injected receipt rows -->
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3" class="text-right subtotal-label">Subtotal</td>
+                <td class="text-right subtotal-val" id="bill-subtotal">₹0.00</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 6. Grand Total Card ================= -->
+    <section class="card grand-total-card" id="grand-total-card">
+      <div class="card-header-row">
+        <h2 class="card-title">
+          <svg class="card-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>Grand Total</span>
+        </h2>
+      </div>
+
+      <div class="grand-total-dashboard">
+        <div class="grand-total-value" id="grand-total-display">₹ --</div>
+        <button type="button" class="btn btn-primary btn-complete-order" id="complete-order-btn" disabled>
+          <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>Complete Order</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ================= 3. Menu Management Card ================= -->
+    <section class="card" id="menu-form-card">
+      <h2 class="card-title" id="form-card-title">Add Menu Item</h2>
+
+      <form id="menu-form" novalidate>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="item-name">Item Name</label>
+            <input
+              type="text"
+              id="item-name"
+              name="item-name"
+              placeholder="e.g. Masala Dosa"
+              autocomplete="off"
+            />
+            <span class="field-error" id="item-name-error"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="item-price">Price (₹)</label>
+            <input
+              type="number"
+              id="item-price"
+              name="item-price"
+              placeholder="e.g. 45.00"
+              min="0.01"
+              step="0.01"
+              inputmode="decimal"
+            />
+            <span class="field-error" id="item-price-error"></span>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="submit-btn">
+            <span class="btn-label">Add Menu Item</span>
+            <span class="btn-spinner hidden" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="btn btn-secondary hidden" id="cancel-edit-btn">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ================= 3. Menu Table ================= -->
+    <section class="card" id="menu-list-card">
+      <div class="card-header-row">
+        <h2 class="card-title">Available Menu</h2>
+        <span class="badge" id="item-count"></span>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Item Name</th>
+              <th>Price</th>
+              <th class="col-action">Edit</th>
+              <th class="col-action">Delete</th>
+            </tr>
+          </thead>
+          <tbody id="menu-table-body">
+            <!-- Rows injected by menu.js -->
+          </tbody>
+        </table>
+
+        <div class="inline-loading hidden" id="table-loading">
+          <span class="spinner"></span>
+          <span>Loading menu...</span>
+        </div>
+
+        <p class="empty-state hidden" id="empty-state">
+          No menu items yet. Add your first item above.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>Runs fully offline · No internet required</p>
+  </footer>
+
+  <!-- ================= 4. Toast Notification Area ================= -->
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  <!-- ================= 5. Loading Overlay ================= -->
+  <div class="loading-overlay hidden" id="loading-overlay">
+    <span class="spinner spinner-lg"></span>
+    <p id="loading-overlay-text">Loading...</p>
+  </div>
+
+  <!-- ================= 6. Confirmation Modal ================= -->
+  <div class="modal-backdrop hidden" id="confirm-modal-backdrop">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+      <h3 class="modal-title" id="confirm-modal-title">Are you sure?</h3>
+      <p class="modal-message" id="confirm-modal-message"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="confirm-modal-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirm-modal-confirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 7. Receipt Preview Modal ================= -->
+  <div class="receipt-modal-backdrop" id="receipt-modal-backdrop">
+    <div class="receipt-paper" id="receipt-paper">
+
+      <!-- Receipt Header -->
+      <div class="receipt-header">
+        <h2 class="receipt-shop-name" id="receipt-shop-name">AI Voice Billing</h2>
+        <p class="receipt-shop-tagline">Voice-Powered Smart POS</p>
+        <hr class="receipt-divider" />
+        <div class="receipt-meta">
+          <div>
+            <span class="receipt-meta-label">Bill No.</span><br />
+            <span id="receipt-bill-number">—</span>
+          </div>
+          <div style="text-align:right">
+            <span class="receipt-meta-label">Date &amp; Time</span><br />
+            <span id="receipt-date-time">—</span>
+          </div>
+        </div>
+      </div>
+
+      <hr class="receipt-divider-thick" />
+
+      <!-- Items Table -->
+      <table class="receipt-items-table">
+        <thead>
+          <tr>
+            <th class="col-item">Item</th>
+            <th class="col-qty">Qty</th>
+            <th class="col-price">Price</th>
+            <th class="col-total">Total</th>
+          </tr>
+        </thead>
+        <tbody id="receipt-items-body">
+          <!-- Dynamically injected by receipt.js -->
+        </tbody>
+      </table>
+
+      <hr class="receipt-divider" />
+
+      <!-- Item count -->
+      <p class="receipt-item-count" id="receipt-item-count">0 items · 0 units</p>
+
+      <!-- Totals -->
+      <div class="receipt-totals">
+        <div class="receipt-total-row">
+          <span>Subtotal</span>
+          <span id="receipt-subtotal-val">₹0.00</span>
+        </div>
+        <div class="receipt-total-row discount-row hidden" id="receipt-discount-row">
+          <span>Discount</span>
+          <span id="receipt-discount-val">−₹0.00</span>
+        </div>
+        <div class="receipt-total-row hidden" id="receipt-tax-row">
+          <span>Tax</span>
+          <span id="receipt-tax-val">₹0.00</span>
+        </div>
+      </div>
+
+      <hr class="receipt-divider-thick" />
+
+      <!-- Grand Total -->
+      <div class="receipt-grand-total-row">
+        <span>GRAND TOTAL</span>
+        <span id="receipt-grand-total-val">₹0.00</span>
+      </div>
+
+      <hr class="receipt-divider" />
+
+      <!-- Warnings -->
+      <div class="receipt-warnings hidden" id="receipt-warnings-section">
+        <div id="receipt-warnings-list"></div>
+      </div>
+
+      <!-- Footer -->
+      <div class="receipt-footer">
+        <p class="receipt-thank-you">★ THANK YOU ★</p>
+        <p class="receipt-footer-note">Visit Again!</p>
+      </div>
+
+    </div>
+
+    <!-- Action Buttons (below the paper, screen only) -->
+    <div class="receipt-actions">
+      <button type="button" class="btn btn-print-receipt" id="receipt-print-btn">
+        <svg class="btn-icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+        </svg>
+        <span>Print Receipt</span>
+      </button>
+      <button type="button" class="btn btn-new-order" id="receipt-new-order-btn">
+        <svg class="btn-icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        <span>New Order</span>
+      </button>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
