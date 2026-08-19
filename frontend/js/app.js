@@ -138,15 +138,12 @@ function registerEvents(menu, voice) {
   nameInput.addEventListener("input", menu.clearNameError);
   priceInput.addEventListener("input", menu.clearPriceError);
 
-  // Voice Billing Events
   const startRecBtn = document.getElementById("start-rec-btn");
   const stopRecBtn = document.getElementById("stop-rec-btn");
-  const sendVoiceBtn = document.getElementById("send-voice-btn");
   const completeOrderBtn = document.getElementById("complete-order-btn");
 
   startRecBtn.addEventListener("click", voice.handleStartRecording);
   stopRecBtn.addEventListener("click", voice.handleStopRecording);
-  sendVoiceBtn.addEventListener("click", voice.handleSendToServer);
   if (completeOrderBtn) {
     completeOrderBtn.addEventListener("click", voice.handleCompleteOrder);
   }
@@ -174,7 +171,6 @@ function initApp() {
       // Re-enable start button, clear text, reset cards.
       document.getElementById("start-rec-btn").disabled = false;
       document.getElementById("stop-rec-btn").disabled = true;
-      document.getElementById("send-voice-btn").disabled = true;
       document.getElementById("recognized-text").value = "";
       document.getElementById("recording-timer").textContent = "00:00";
 

@@ -17,6 +17,10 @@ Design principles
 * **In-Memory Caching** — caches active menu items, extracted words, and alias mappings
   in memory to prevent redundant SQLite queries on repeated requests. Automatically
   refreshes/invalidates on TTL or menu changes.
+* **Quantity-Bound Adjacency Correction** — menu item corrections (exact, alias,
+  rapidfuzz, phonetic, word distance) are strictly restricted to tokens or multi-word
+  phrases directly adjacent to a valid quantity token (NUMBER + ITEM or ITEM + NUMBER).
+  Unrelated conversational words are left unchanged.
 * **Multi-Strategy Cascade** — evaluates corrections in strict priority order:
     1. Exact Match        (Confidence: 99% / 1.0)
     2. Alias Match        (Confidence: 96% / 0.96)
@@ -24,10 +28,7 @@ Design principles
     4. Phonetic Match     (Confidence: Metaphone / Soundex / Jaro-Winkler score)
     5. Word Distance      (Confidence: Damerau-Levenshtein normalized edit distance)
 * **Confidence & Low-Confidence Threshold** — computes confidence scores for all
-  token candidates. If confidence < threshold (default ~65%), rejects auto-billing
-  and flags as 'Unknown Menu Item' with candidate suggestions.
-* **Detailed Logging** — logs Original Transcript, Normalized Transcript, Correction
-  Applied (with strategy name & confidence), and Overall Confidence.
+  evaluated candidate tokens.
 """
 
 from dataclasses import dataclass, field
@@ -43,7 +44,7 @@ from app.domain.interfaces.vocabulary_corrector_interface import VocabularyCorre
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# Protected token sets — digits, quantity words, and connector words
+# Protected token sets & Quantity tokens
 # ---------------------------------------------------------------------------
 
 
@@ -61,11 +62,40 @@ def _build_protected_words() -> frozenset[str]:
     protected.update(ENGLISH_NUMBER_HOMOPHONES.keys())
     protected.update(TAMIL_NUMBER_WORDS.keys())
     protected.update(NUMBER_TO_DIGIT_MAP.keys())
-    protected.update({"and", "with", "plus"})
+    protected.update({
+        "and", "with", "plus", "the", "a", "an", "of", "it", "i", "have",
+        "has", "had", "all", "me", "my", "your", "we", "us", "please",
+        "this", "that", "is", "are", "was", "were", "be", "for", "to",
+        "in", "on", "at", "so", "or", "if", "think", "soul", "get", "give", "want", "need", "like"
+    })
     return frozenset(protected)
 
 
+def _build_quantity_words() -> frozenset[str]:
+    """Return a frozenset of all recognized quantity/number words."""
+    from app.application.services.order_parser_service import QUANTITY_WORDS  # noqa: PLC0415
+    from app.application.services.speech_normalizer import (  # noqa: PLC0415
+        ENGLISH_NUMBER_HOMOPHONES,
+        NUMBER_TO_DIGIT_MAP,
+        TAMIL_NUMBER_WORDS,
+    )
+
+    q_words: set[str] = set()
+    q_words.update(QUANTITY_WORDS.keys())
+    q_words.update(ENGLISH_NUMBER_HOMOPHONES.keys())
+    q_words.update(TAMIL_NUMBER_WORDS.keys())
+    q_words.update(NUMBER_TO_DIGIT_MAP.keys())
+    return frozenset(q_words)
+
+
 _PROTECTED_WORDS: Final[frozenset[str]] = _build_protected_words()
+_QUANTITY_WORDS: Final[frozenset[str]] = _build_quantity_words()
+
+
+def _is_quantity_token(token: str) -> bool:
+    """Return True if token represents a numeric quantity or number word."""
+    token_lower = token.lower()
+    return token_lower.isdigit() or token_lower in _QUANTITY_WORDS
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +110,7 @@ class TokenMatch:
     original_token: str
     corrected_token: str
     confidence: float  # 0.0 to 1.0 (or 0% to 100%)
-    strategy: str  # exact_match, alias_match, rapidfuzz_similarity, phonetic_similarity, word_distance, none
+    strategy: str  # exact_match, alias_match, rapidfuzz_similarity, phonetic_similarity, word_distance, none, protected, consumed
     suggestions: list[tuple[str, float]] = field(default_factory=list)
 
 
@@ -101,7 +131,7 @@ class CorrectionResult:
 
 
 class MenuContextEngine(VocabularyCorrectorInterface):
-    """Context-aware speech understanding & menu correction engine."""
+    """Context-aware speech understanding & quantity-bound menu correction engine."""
 
     def __init__(
         self,
@@ -185,7 +215,7 @@ class MenuContextEngine(VocabularyCorrectorInterface):
     def correct_with_details(
         self, text: str, vocabulary: list[str] | None = None
     ) -> CorrectionResult:
-        """Perform full correction cascade with per-token confidence and logging.
+        """Perform quantity-bound correction cascade with per-token confidence and logging.
 
         Args:
             text: Transcript string.
@@ -213,19 +243,145 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         active_vocab = self._cached_vocabulary
 
         tokens = text.split()
-        matches: list[TokenMatch] = []
+        if not tokens:
+            return CorrectionResult(
+                original_transcript=text,
+                normalized_transcript=text,
+                corrected_transcript=text,
+                token_matches=[],
+                overall_confidence=1.0,
+            )
+
+        # Determine max words in any single active menu item
+        max_vocab_len = 1
+        if active_vocab:
+            max_vocab_len = max(len(item.split()) for item in active_vocab)
+        max_vocab_len = max(1, max_vocab_len)
+
+        # Identify indices of quantity tokens
+        quantity_indices = [i for i, t in enumerate(tokens) if _is_quantity_token(t)]
+
+        # Track assigned matches for each token index (None if unassigned)
+        token_matches: list[Optional[TokenMatch]] = [None] * len(tokens)
+
+        # Mark quantity tokens as protected
+        for q_idx in quantity_indices:
+            token_matches[q_idx] = TokenMatch(
+                original_token=tokens[q_idx],
+                corrected_token=tokens[q_idx],
+                confidence=1.0,
+                strategy="protected",
+            )
+
+        # For each quantity token, evaluate directly adjacent candidate menu tokens/phrases
+        for q_idx in quantity_indices:
+            # ---------------------------------------------------------------
+            # 1. Number-before-item (quantity_index + 1)
+            # ---------------------------------------------------------------
+            start_idx = q_idx + 1
+            if (
+                start_idx < len(tokens)
+                and token_matches[start_idx] is None
+                and not _is_quantity_token(tokens[start_idx])
+            ):
+                max_k = min(max_vocab_len, len(tokens) - start_idx)
+                last_single_match = None
+                for k in range(max_k, 0, -1):
+                    end_idx = start_idx + k
+                    if any(
+                        _is_quantity_token(tokens[j]) or token_matches[j] is not None
+                        for j in range(start_idx, end_idx)
+                    ):
+                        continue
+
+                    candidate_str = " ".join(tokens[start_idx:end_idx])
+                    match = self._evaluate_candidate(
+                        candidate_str, vocab_words, alias_map, active_vocab
+                    )
+                    if k == 1:
+                        last_single_match = match
+
+                    if match.confidence >= self.confidence_threshold and match.strategy != "none":
+                        token_matches[start_idx] = match
+                        for j in range(start_idx + 1, end_idx):
+                            token_matches[j] = TokenMatch(
+                                original_token=tokens[j],
+                                corrected_token="",
+                                confidence=match.confidence,
+                                strategy="consumed",
+                            )
+                        break
+                else:
+                    if last_single_match is not None and token_matches[start_idx] is None:
+                        token_matches[start_idx] = last_single_match
+
+            # ---------------------------------------------------------------
+            # 2. Item-before-number (quantity_index - 1)
+            # ---------------------------------------------------------------
+            end_idx = q_idx
+            if (
+                end_idx - 1 >= 0
+                and token_matches[end_idx - 1] is None
+                and not _is_quantity_token(tokens[end_idx - 1])
+            ):
+                max_k = min(max_vocab_len, end_idx)
+                last_single_match = None
+                for k in range(max_k, 0, -1):
+                    start_idx = end_idx - k
+                    if any(
+                        _is_quantity_token(tokens[j]) or token_matches[j] is not None
+                        for j in range(start_idx, end_idx)
+                    ):
+                        continue
+
+                    candidate_str = " ".join(tokens[start_idx:end_idx])
+                    match = self._evaluate_candidate(
+                        candidate_str, vocab_words, alias_map, active_vocab
+                    )
+                    if k == 1:
+                        last_single_match = match
+
+                    if match.confidence >= self.confidence_threshold and match.strategy != "none":
+                        token_matches[start_idx] = match
+                        for j in range(start_idx + 1, end_idx):
+                            token_matches[j] = TokenMatch(
+                                original_token=tokens[j],
+                                corrected_token="",
+                                confidence=match.confidence,
+                                strategy="consumed",
+                            )
+                        break
+                else:
+                    if last_single_match is not None and token_matches[end_idx - 1] is None:
+                        token_matches[end_idx - 1] = last_single_match
+
+        # Fill remaining unassigned tokens as unchanged original tokens
+        final_matches: list[TokenMatch] = []
         corrected_tokens: list[str] = []
 
-        for token in tokens:
-            match = self._evaluate_token(token, vocab_words, alias_map, active_vocab)
-            matches.append(match)
-            corrected_tokens.append(match.corrected_token)
+        for i, match in enumerate(token_matches):
+            if match is None:
+                match = TokenMatch(
+                    original_token=tokens[i],
+                    corrected_token=tokens[i],
+                    confidence=1.0,
+                    strategy="none",
+                )
+                final_matches.append(match)
+                corrected_tokens.append(tokens[i])
+            elif match.strategy == "consumed":
+                pass
+            else:
+                final_matches.append(match)
+                corrected_tokens.append(match.corrected_token)
 
         corrected_text = " ".join(corrected_tokens)
 
-        # Compute overall confidence (average of evaluated non-protected tokens)
+        # Compute overall confidence across evaluated candidate tokens
         eval_confidences = [
-            m.confidence for m in matches if m.strategy != "protected"
+            m.confidence
+            for m in final_matches
+            if m.strategy not in ("protected", "none", "consumed")
         ]
         overall_conf = (
             sum(eval_confidences) / len(eval_confidences)
@@ -237,16 +393,16 @@ class MenuContextEngine(VocabularyCorrectorInterface):
             original_transcript=text,
             normalized_transcript=text,
             corrected_transcript=corrected_text,
-            token_matches=matches,
+            token_matches=final_matches,
             overall_confidence=overall_conf,
         )
 
         # Log detailed correction report
         applied_corrections = [
             f"{m.original_token} -> {m.corrected_token} (strategy: {m.strategy}, confidence: {m.confidence * 100:.1f}%)"
-            for m in matches
+            for m in final_matches
             if m.original_token.lower() != m.corrected_token.lower()
-            and m.strategy != "protected"
+            and m.strategy not in ("protected", "none", "consumed")
         ]
 
         if applied_corrections:
@@ -266,29 +422,37 @@ class MenuContextEngine(VocabularyCorrectorInterface):
 
         return result
 
-    def _evaluate_token(
+    def _evaluate_candidate(
         self,
-        token: str,
+        candidate_str: str,
         vocab_words: list[str],
         alias_map: dict[str, str],
         active_vocab: list[str],
     ) -> TokenMatch:
-        """Evaluate a single token against the 5 correction strategies in priority order."""
-        token_lower = token.lower()
+        """Evaluate a candidate string (single token or multi-word phrase) against correction strategies."""
+        cand_lower = candidate_str.lower().strip()
 
-        # Check protected tokens (digits, quantities, connectors)
-        if token_lower.isdigit() or token_lower in _PROTECTED_WORDS:
+        if not cand_lower:
             return TokenMatch(
-                original_token=token,
-                corrected_token=token,
+                original_token=candidate_str,
+                corrected_token=candidate_str,
+                confidence=1.0,
+                strategy="none",
+            )
+
+        # Do not correct protected tokens (digits, quantities, connectors)
+        if cand_lower.isdigit() or cand_lower in _PROTECTED_WORDS:
+            return TokenMatch(
+                original_token=candidate_str,
+                corrected_token=candidate_str,
                 confidence=1.0,
                 strategy="protected",
             )
 
-        if not vocab_words:
+        if not vocab_words and not active_vocab:
             return TokenMatch(
-                original_token=token,
-                corrected_token=token,
+                original_token=candidate_str,
+                corrected_token=candidate_str,
                 confidence=1.0,
                 strategy="none",
             )
@@ -296,38 +460,37 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         # -------------------------------------------------------------------
         # Strategy 1: Exact Match
         # -------------------------------------------------------------------
-        if token_lower in vocab_words:
-            return TokenMatch(
-                original_token=token,
-                corrected_token=token_lower,
-                confidence=0.99,
-                strategy="exact_match",
-                suggestions=[(token_lower, 0.99)],
-            )
-
         for menu_name in active_vocab:
-            if token_lower == menu_name.lower():
+            if cand_lower == menu_name.lower():
                 return TokenMatch(
-                    original_token=token,
+                    original_token=candidate_str,
                     corrected_token=menu_name.lower(),
                     confidence=0.99,
                     strategy="exact_match",
                     suggestions=[(menu_name.lower(), 0.99)],
                 )
 
+        if cand_lower in vocab_words:
+            return TokenMatch(
+                original_token=candidate_str,
+                corrected_token=cand_lower,
+                confidence=0.99,
+                strategy="exact_match",
+                suggestions=[(cand_lower, 0.99)],
+            )
+
         # -------------------------------------------------------------------
         # Strategy 2: Alias Match
         # -------------------------------------------------------------------
-        if token_lower in alias_map:
-            canonical = alias_map[token_lower]
-            # Verify canonical exists in active menu or menu words
+        if cand_lower in alias_map:
+            canonical = alias_map[cand_lower]
             canon_words = canonical.lower().split()
             if any(w in vocab_words for w in canon_words) or any(
                 canonical.lower() == v.lower() for v in active_vocab
             ):
                 if 0.96 >= self.confidence_threshold:
                     return TokenMatch(
-                        original_token=token,
+                        original_token=candidate_str,
                         corrected_token=canonical.lower(),
                         confidence=0.96,
                         strategy="alias_match",
@@ -337,9 +500,15 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         # -------------------------------------------------------------------
         # Strategy 3: RapidFuzz Similarity
         # -------------------------------------------------------------------
+        choices = set()
+        for v in active_vocab:
+            choices.add(v.lower())
+        for w in vocab_words:
+            choices.add(w)
+
         rf_match = process.extractOne(
-            token_lower,
-            vocab_words,
+            cand_lower,
+            list(choices),
             scorer=fuzz.ratio,
         )
         if rf_match:
@@ -347,7 +516,7 @@ class MenuContextEngine(VocabularyCorrectorInterface):
             rf_conf = rf_score / 100.0
             if rf_conf >= self.confidence_threshold:
                 return TokenMatch(
-                    original_token=token,
+                    original_token=candidate_str,
                     corrected_token=rf_word,
                     confidence=rf_conf,
                     strategy="rapidfuzz_similarity",
@@ -358,11 +527,11 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         # Strategy 4: Phonetic Similarity
         # -------------------------------------------------------------------
         phon_match, phon_conf = self._check_phonetic_similarity(
-            token_lower, vocab_words, active_vocab
+            cand_lower, vocab_words, active_vocab
         )
         if phon_match and phon_conf >= self.confidence_threshold:
             return TokenMatch(
-                original_token=token,
+                original_token=candidate_str,
                 corrected_token=phon_match,
                 confidence=phon_conf,
                 strategy="phonetic_similarity",
@@ -374,17 +543,17 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         # -------------------------------------------------------------------
         best_dist_word = None
         best_dist_conf = 0.0
-        for v_word in vocab_words:
-            dist = jellyfish.damerau_levenshtein_distance(token_lower, v_word)
-            max_len = max(len(token_lower), len(v_word))
+        for choice in choices:
+            dist = jellyfish.damerau_levenshtein_distance(cand_lower, choice)
+            max_len = max(len(cand_lower), len(choice))
             conf = 1.0 - (dist / max_len)
             if conf > best_dist_conf:
                 best_dist_conf = conf
-                best_dist_word = v_word
+                best_dist_word = choice
 
         if best_dist_word and best_dist_conf >= self.confidence_threshold:
             return TokenMatch(
-                original_token=token,
+                original_token=candidate_str,
                 corrected_token=best_dist_word,
                 confidence=best_dist_conf,
                 strategy="word_distance",
@@ -394,8 +563,7 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         # -------------------------------------------------------------------
         # Low Confidence / Below Threshold
         # -------------------------------------------------------------------
-        # Determine highest candidate score across strategies for suggestion
-        highest_cand = best_dist_word or (rf_match[0] if rf_match else token_lower)
+        highest_cand = best_dist_word or (rf_match[0] if rf_match else cand_lower)
         highest_score = max(
             best_dist_conf,
             (rf_match[1] / 100.0) if rf_match else 0.0,
@@ -405,16 +573,16 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         suggestions = [(highest_cand, highest_score)] if highest_cand else []
 
         logger.info(
-            "Low confidence match for %r: best match %r with confidence %.1f%% < threshold %.1f%% — returning Unknown Menu Item",
-            token,
+            "Low confidence match for %r: best match %r with confidence %.1f%% < threshold %.1f%% — keeping original token",
+            candidate_str,
             highest_cand,
             highest_score * 100.0,
             self.confidence_threshold * 100.0,
         )
 
         return TokenMatch(
-            original_token=token,
-            corrected_token="Unknown Menu Item",
+            original_token=candidate_str,
+            corrected_token=candidate_str,
             confidence=highest_score,
             strategy="none",
             suggestions=suggestions,
@@ -425,7 +593,6 @@ class MenuContextEngine(VocabularyCorrectorInterface):
         token: str, vocab_words: list[str], active_vocab: list[str]
     ) -> tuple[str | None, float]:
         """Compute phonetic similarity using jellyfish metaphone, soundex, and custom rules."""
-        # Specific domain-phonetic mapping rules
         DOMAIN_PHONETIC_MAP = {
             "curry": "puri",
             "kury": "puri",
@@ -467,7 +634,6 @@ class MenuContextEngine(VocabularyCorrectorInterface):
                 score = min(0.92, 0.75 + (0.15 * jw))
             elif t_meta and v_meta:
                 meta_dist = jellyfish.damerau_levenshtein_distance(t_meta, v_meta)
-                # For short metaphone keys (length <= 2), 1 edit is a 50% difference
                 if meta_dist <= 1 and (len(t_meta) > 2 or jw >= 0.80):
                     score = min(0.88, 0.70 + (0.20 * jw))
 
@@ -476,3 +642,4 @@ class MenuContextEngine(VocabularyCorrectorInterface):
                 best_word = v_word
 
         return best_word, best_score
+

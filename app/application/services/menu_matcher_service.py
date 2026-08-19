@@ -179,13 +179,20 @@ class MenuMatcherService(MenuMatcherInterface):
         Only attempted when the spoken name is a single word (multi-word
         items with no word overlap are better left unmatched than guessed
         by fuzzy similarity).
+
+        Safety rule: spoken word must be at least 70% of the candidate's
+        length to be eligible for fuzzy scoring.  This stops short words
+        (e.g. "dosa", 4 chars) from matching much-longer candidates
+        (e.g. "samosa", 6 chars: 4/6 = 0.67 < 0.70 → blocked), while
+        still allowing "tee" → "tea" (3/3 = 1.0 ≥ 0.70 → eligible).
         """
         if len(spoken.split()) > 1:
-            # Do not fuzzy-match multi-word phrases — the risk of false
-            # positives outweighs the benefit.
             return None
 
-        matches = difflib.get_close_matches(
-            spoken, candidate_names, n=1, cutoff=_FUZZY_CUTOFF
-        )
+        _MIN_LEN_RATIO = 0.70  # spoken must be ≥ 70 % of candidate length
+        eligible = [c for c in candidate_names if len(spoken) / len(c) >= _MIN_LEN_RATIO]
+        if not eligible:
+            return None
+
+        matches = difflib.get_close_matches(spoken, eligible, n=1, cutoff=_FUZZY_CUTOFF)
         return name_lookup[matches[0]] if matches else None

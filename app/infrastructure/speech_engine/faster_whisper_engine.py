@@ -78,10 +78,10 @@ class FasterWhisperEngine:
 
             if cuda_count == 0:
                 logger.warning(
-                    "CUDA requested for Faster-Whisper but CUDA device count is 0. Falling back to CPU."
+                    "CUDA requested for Faster-Whisper but CUDA device count is 0. Automatically switching to CPU with int8 quantization."
                 )
                 target_device = "cpu"
-                target_compute_type = "default"
+                target_compute_type = "int8"
 
         logger.info(
             "Loading Faster-Whisper model '%s' (device=%s, compute_type=%s)...",
@@ -100,12 +100,8 @@ class FasterWhisperEngine:
                 local_files_only=True,
             )
         except Exception as exc:
-            if target_device == "cuda":
-                logger.warning(
-                    "Failed to load Faster-Whisper model on CUDA (%s). Retrying fallback to CPU...",
-                    exc,
-                )
-                target_device = "cpu"
+            if target_device == "cpu" and target_compute_type == "int8":
+                logger.warning("Failed to load Faster-Whisper with int8 (%s). Retrying CPU default...", exc)
                 target_compute_type = "default"
                 try:
                     model = WhisperModel(
@@ -115,9 +111,36 @@ class FasterWhisperEngine:
                         local_files_only=True,
                     )
                 except Exception as cpu_exc:
-                    err_msg = f"Failed to load Faster-Whisper model '{self.model_name}' on CPU fallback: {cpu_exc}"
+                    err_msg = f"Failed to load Faster-Whisper model '{self.model_name}' on CPU default: {cpu_exc}"
                     logger.error("%s", err_msg)
                     raise SpeechRecognitionException(err_msg) from cpu_exc
+            elif target_device == "cuda":
+                logger.warning(
+                    "Failed to load Faster-Whisper model on CUDA (%s). Retrying fallback to CPU...",
+                    exc,
+                )
+                target_device = "cpu"
+                target_compute_type = "int8"
+                try:
+                    model = WhisperModel(
+                        self.model_name,
+                        device=target_device,
+                        compute_type=target_compute_type,
+                        local_files_only=True,
+                    )
+                except Exception:
+                    target_compute_type = "default"
+                    try:
+                        model = WhisperModel(
+                            self.model_name,
+                            device=target_device,
+                            compute_type=target_compute_type,
+                            local_files_only=True,
+                        )
+                    except Exception as cpu_exc:
+                        err_msg = f"Failed to load Faster-Whisper model '{self.model_name}' on CPU fallback: {cpu_exc}"
+                        logger.error("%s", err_msg)
+                        raise SpeechRecognitionException(err_msg) from cpu_exc
             else:
                 err_msg = f"Failed to load Faster-Whisper model '{self.model_name}': {exc}"
                 logger.error("%s", err_msg)
@@ -138,7 +161,7 @@ class FasterWhisperEngine:
     def transcribe(self, audio_file_path: str) -> str:
         """Transcribe an audio file using Faster-Whisper Python API.
 
-        Automatic language detection is enabled (language=None).
+        Automatic language detection is enabled if language is None/auto.
 
         Returns:
             str: clean recognized text
@@ -184,14 +207,25 @@ class FasterWhisperEngine:
             print(device_log_before)
             logger.info(device_log_before)
 
-            # Use configured beam_size and language for optimized inference.
+            # Use configured beam_size and language for inference.
             segments, info = model.transcribe(
                 str(audio_path),
                 beam_size=self.beam_size,
                 language=self.language,
             )
-            text_parts = [segment.text.strip() for segment in segments if segment.text and segment.text.strip()]
+            segments_list = list(segments)
+            for segment in segments_list:
+                print("WHISPER SEGMENT:", repr(segment.text))
+
+            text_parts = [segment.text.strip() for segment in segments_list if segment.text and segment.text.strip()]
             transcript = " ".join(text_parts).strip()
+
+            print(f"RAW WHISPER TRANSCRIPT:\n{transcript}")
+            print(f"DETECTED LANGUAGE:\n{getattr(info, 'language', None)}")
+            print(f"LANGUAGE PROBABILITY:\n{getattr(info, 'language_probability', None)}")
+            print(f"INFERENCE MODEL:\n{self.model_name}")
+            print(f"CONFIGURED LANGUAGE:\n{self.language}")
+            print(f"BEAM SIZE:\n{self.beam_size}")
 
             device_log_after = (
                 f"\n========================================\n"

@@ -43,13 +43,13 @@ from typing import TYPE_CHECKING, Any
 
 from app.application.services.menu_vocabulary_corrector import MenuVocabularyCorrector
 from app.application.services.speech_normalizer import normalize as _normalize_transcript
+from app.application.services.tamil_menu_normalizer import TamilMenuNormalizer
 from app.core.config import settings
 from app.core.exceptions import SpeechRecognitionException
 from app.core.logging import get_logger
 from app.domain.interfaces.speech_service_interface import SpeechServiceInterface
 from app.infrastructure.speech_engine.audio_converter import convert_to_wav, is_target_format
 from app.infrastructure.speech_engine.audio_preprocessor import AudioPreprocessor
-from app.infrastructure.speech_engine.faster_whisper_engine import FasterWhisperEngine
 
 if TYPE_CHECKING:
     from app.infrastructure.database.repositories.menu_repository import MenuRepository
@@ -70,12 +70,10 @@ def _log_transcript_stage(title: str, content: str) -> None:
 
 
 class SpeechService(SpeechServiceInterface):
-    """Speech-to-text service backed by Faster-Whisper transcription engine.
+    """Speech-to-text service backed by Sarvam AI Speech Engine (or injected engine).
 
     This class is intended to be constructed **once** (singleton) and shared
-    across all requests.  The Faster-Whisper model is held in a class-level
-    cache inside ``FasterWhisperEngine`` and never reloaded after the first
-    call to ``load_model()``.
+    across all requests.
     """
 
     def __init__(
@@ -86,20 +84,23 @@ class SpeechService(SpeechServiceInterface):
         """Initialise the service.
 
         Args:
-            engine:          Whisper engine. If None, built from settings.
+            engine:          Speech engine instance. If None, built from Sarvam settings.
             menu_repository: Optional repository used to fetch live menu names
                              for vocabulary correction. When None, the
                              vocabulary correction step is skipped (the
                              Speech Normalizer still runs).
         """
-        self._engine = engine or FasterWhisperEngine(
-            model_name=settings.whisper_model_name,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-            beam_size=settings.whisper_beam_size,
-            language=settings.whisper_language or None,
-        )
+        if engine is None:
+            from app.infrastructure.speech_engine.sarvam_engine import SarvamSpeechEngine  # noqa: PLC0415
+            engine = SarvamSpeechEngine(
+                api_key=settings.sarvam_api_key,
+                model=settings.sarvam_model,
+                language_code=settings.sarvam_language_code,
+                mode=settings.sarvam_mode,
+            )
+        self._engine = engine
         self._menu_repository = menu_repository
+        self._tamil_normalizer = TamilMenuNormalizer()
         self._vocab_corrector = MenuVocabularyCorrector()
         self._preprocessor = AudioPreprocessor()
         self._model_loaded = False
@@ -111,7 +112,7 @@ class SpeechService(SpeechServiceInterface):
     # ─────────────────────────────── lifecycle ────────────────────────────
 
     def load_model(self) -> None:
-        """Load and verify the Faster-Whisper speech model.
+        """Load and verify the speech model.
 
         Raises:
             SpeechRecognitionException: if model loading fails.
@@ -120,13 +121,8 @@ class SpeechService(SpeechServiceInterface):
             if hasattr(self._engine, "load_model"):
                 self._engine.load_model()
             self._model_loaded = True
-            model_name = getattr(self._engine, "model_name", settings.whisper_model_name)
-            beam_size = getattr(self._engine, "beam_size", settings.whisper_beam_size)
-            language = getattr(self._engine, "language", settings.whisper_language)
-            logger.info(
-                "Faster-Whisper model ready: %s  beam_size=%d  language=%r",
-                model_name, beam_size, language,
-            )
+            model_name = getattr(self._engine, "model", getattr(self._engine, "model_name", "saaras:v3"))
+            logger.info("Speech model ready: %s (%s)", self._engine.__class__.__name__, model_name)
         except SpeechRecognitionException as exc:
             self._model_loaded = False
             err_msg = f"Speech engine startup failed: {exc}"
@@ -159,11 +155,7 @@ class SpeechService(SpeechServiceInterface):
             raise SpeechRecognitionException(f"Audio file not found at: {audio_path}")
 
         if not self.is_model_loaded():
-            try:
-                self.load_model()
-            except SpeechRecognitionException:
-                logger.info("Whisper engine missing, using prototype fallback transcription.")
-                return "2 dosa 1 tea"
+            self.load_model()
 
         total_start = time.perf_counter()
         audio_load_start = time.perf_counter()
@@ -180,7 +172,7 @@ class SpeechService(SpeechServiceInterface):
             is_temp_converted = True
 
         try:
-            # Preprocess the 16000 Hz WAV file before sending it to Whisper.
+            # Preprocess the 16000 Hz WAV file before sending it to speech engine.
             stats = self._preprocessor.preprocess(converted_path, converted_path)
             stats.log_summary()
             audio_loading_time = time.perf_counter() - audio_load_start
@@ -189,10 +181,25 @@ class SpeechService(SpeechServiceInterface):
             raw = self._engine.transcribe(str(converted_path))
             inference_time = time.perf_counter() - infer_start
 
-            _log_transcript_stage("RAW FASTER-WHISPER TRANSCRIPT", raw)
+            raw_label = "RAW SARVAM TRANSCRIPT" if "Sarvam" in self._engine.__class__.__name__ else "RAW STT TRANSCRIPT"
+            _log_transcript_stage(raw_label, raw)
+
+            menu_names = []
+            if self._menu_repository:
+                try:
+                    menu_items = self._menu_repository.get_all()
+                    menu_names = [item.name for item in menu_items]
+                except Exception:
+                    pass
+
+            tamil_norm_start = time.perf_counter()
+            tamil_normalized = self._tamil_normalizer.normalize(raw, menu_names)
+            tamil_norm_time = time.perf_counter() - tamil_norm_start
+
+            _log_transcript_stage("TAMIL MENU NORMALIZED TRANSCRIPT", tamil_normalized)
 
             norm_start = time.perf_counter()
-            normalized = _normalize_transcript(raw)
+            normalized = _normalize_transcript(tamil_normalized)
             norm_time = time.perf_counter() - norm_start
 
             _log_transcript_stage("NORMALIZED TRANSCRIPT", normalized)
@@ -214,7 +221,7 @@ class SpeechService(SpeechServiceInterface):
                 logger.debug(
                     "Timing breakdown (file path):\n"
                     "  audio load+preprocess : %.3fs\n"
-                    "  whisper inference     : %.3fs\n"
+                    "  stt inference         : %.3fs\n"
                     "  normalization         : %.3fs\n"
                     "  vocab correction      : %.3fs\n"
                     "  ─────────────────────────────\n"
@@ -226,8 +233,7 @@ class SpeechService(SpeechServiceInterface):
                 logger.debug("Transcript normalized+corrected: %r → %r", raw, corrected)
             return corrected
         except SpeechRecognitionException:
-            logger.warning("Faster-Whisper transcription failed; falling back to prototype STT.")
-            return "2 dosa 1 tea"
+            raise
         except Exception as exc:
             raise SpeechRecognitionException(f"Speech recognition failed: {exc}") from exc
         finally:
@@ -247,7 +253,7 @@ class SpeechService(SpeechServiceInterface):
         """
         if hasattr(self._engine, "is_available") and not self._engine.is_available():
             raise SpeechRecognitionException(
-                "Faster-Whisper speech engine unavailable."
+                "Speech engine unavailable."
             )
 
         upload_dir = Path(settings.audio_upload_dir)
@@ -302,13 +308,33 @@ class SpeechService(SpeechServiceInterface):
             if profiler and hasattr(profiler, "end_stage"):
                 profiler.end_stage("Inference")
 
-            _log_transcript_stage("RAW FASTER-WHISPER TRANSCRIPT", raw_transcript)
+            raw_label = "RAW SARVAM TRANSCRIPT" if "Sarvam" in self._engine.__class__.__name__ else "RAW STT TRANSCRIPT"
+            _log_transcript_stage(raw_label, raw_transcript)
+
+            menu_names = []
+            if self._menu_repository:
+                try:
+                    menu_items = self._menu_repository.get_all()
+                    menu_names = [item.name for item in menu_items]
+                except Exception:
+                    pass
+
+            # ── Stage 5b: Tamil Normalizer ────────────────────────────────
+            if profiler and hasattr(profiler, "start_stage"):
+                profiler.start_stage("Tamil Normalizer")
+            t0 = time.perf_counter()
+            tamil_normalized = self._tamil_normalizer.normalize(raw_transcript, menu_names)
+            t_tamil_norm = time.perf_counter() - t0
+            if profiler and hasattr(profiler, "end_stage"):
+                profiler.end_stage("Tamil Normalizer")
+
+            _log_transcript_stage("TAMIL MENU NORMALIZED TRANSCRIPT", tamil_normalized)
 
             # ── Stage 6: Normalizer ───────────────────────────────────────
             if profiler and hasattr(profiler, "start_stage"):
                 profiler.start_stage("Normalizer")
             t0 = time.perf_counter()
-            normalized = _normalize_transcript(raw_transcript)
+            normalized = _normalize_transcript(tamil_normalized)
             t_norm = time.perf_counter() - t0
             if profiler and hasattr(profiler, "end_stage"):
                 profiler.end_stage("Normalizer")
@@ -318,14 +344,6 @@ class SpeechService(SpeechServiceInterface):
             # ── Stage 7 & 8: Vocabulary & Menu Context ───────────────────
             if profiler and hasattr(profiler, "start_stage"):
                 profiler.start_stage("Vocabulary")
-            t0_vocab = time.perf_counter()
-            menu_names = []
-            if self._menu_repository:
-                try:
-                    menu_items = self._menu_repository.get_all()
-                    menu_names = [item.name for item in menu_items]
-                except Exception:
-                    pass
             if profiler and hasattr(profiler, "end_stage"):
                 profiler.end_stage("Vocabulary")
 

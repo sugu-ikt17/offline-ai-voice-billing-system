@@ -7,7 +7,20 @@
  * need one try/catch.
  */
 
-const ROOT_URL = "http://127.0.0.1:8000";
+const getBaseUrl = () => {
+  if (
+    typeof window !== "undefined" &&
+    window.location &&
+    window.location.origin &&
+    window.location.origin !== "null" &&
+    window.location.protocol !== "file:"
+  ) {
+    return window.location.origin;
+  }
+  return "http://127.0.0.1:8000";
+};
+
+const ROOT_URL = getBaseUrl();
 const API_BASE = `${ROOT_URL}/api/v1`;
 const MENU_ENDPOINT = `${API_BASE}/menu`;
 
@@ -45,7 +58,11 @@ export async function checkHealth() {
 /** GET /menu — fetch all menu items. */
 export async function getMenus() {
   const response = await fetch(MENU_ENDPOINT);
-  return handleResponse(response);
+  const data = await handleResponse(response);
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.items)) return data.items;
+  if (data && Array.isArray(data.data)) return data.data;
+  return [];
 }
 
 /** POST /menu — create a menu item. data = { name, price } */
@@ -129,22 +146,12 @@ export async function transcribeVoice(audioBlob) {
 
 /** POST /orders/process — process recognized text into structured order & bill. */
 export async function processOrder(text) {
-  try {
-    const response = await fetch(ORDER_PROCESS_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ speech: text }),
-    });
-
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (err) {
-    console.warn("POST /orders/process endpoint unavailable, using client preview parser:", err);
-  }
-
-  // Graceful client-side fallback if backend process endpoint is not yet implemented
-  return fallbackProcessText(text);
+  const response = await fetch(ORDER_PROCESS_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ speech: text }),
+  });
+  return handleResponse(response);
 }
 
 function fallbackProcessText(text) {

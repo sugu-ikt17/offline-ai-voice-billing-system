@@ -129,65 +129,65 @@ class TestSpecExamples:
 class TestIndividualWordCorrections:
 
     def test_cofee_to_coffee(self):
-        assert correct("cofee") == "coffee"
+        assert correct("1 cofee") == "1 coffee"
 
     def test_coffey_to_coffee(self):
         """'coffey' ratio vs 'coffee' ≈ 0.77 — above threshold."""
-        assert correct("coffey") == "coffee"
+        assert correct("1 coffey") == "1 coffee"
 
     def test_dhosa_to_dosa(self):
-        assert correct("dhosa") == "dosa"
+        assert correct("1 dhosa") == "1 dosa"
 
     def test_dosay_to_dosa(self):
-        assert correct("dosay") == "dosa"
+        assert correct("1 dosay") == "1 dosa"
 
     def test_vadai_to_vada(self):
-        assert correct("vadai") == "vada"
+        assert correct("1 vadai") == "1 vada"
 
     def test_vaday_to_vada(self):
-        assert correct("vaday") == "vada"
+        assert correct("1 vaday") == "1 vada"
 
     def test_wada_to_vada(self):
-        assert correct("wada") == "vada"
+        assert correct("1 wada") == "1 vada"
 
     def test_sambhar_to_sambar(self):
-        assert correct("sambhar") == "sambar"
+        assert correct("1 sambhar") == "1 sambar"
 
     def test_saambar_to_sambar(self):
-        assert correct("saambar") == "sambar"
+        assert correct("1 saambar") == "1 sambar"
 
     def test_pongul_to_pongal(self):
-        assert correct("pongul") == "pongal"
+        assert correct("1 pongul") == "1 pongal"
 
     def test_pongall_to_pongal(self):
-        assert correct("pongall") == "pongal"
+        assert correct("1 pongall") == "1 pongal"
 
     def test_uppma_to_upma(self):
-        assert correct("uppma") == "upma"
+        assert correct("1 uppma") == "1 upma"
 
     def test_uppuma_to_upma(self):
-        assert correct("uppuma") == "upma"
+        assert correct("1 uppuma") == "1 upma"
 
     def test_parota_to_parotta(self):
-        assert correct("parota") == "parotta"
+        assert correct("1 parota") == "1 parotta"
 
     def test_chay_to_chai(self):
-        assert correct("chay") in ("tea", "chai")
+        assert correct("1 chay") in ("1 tea", "1 chai")
 
     def test_idly_to_idli(self):
-        assert correct("idly") == "idli"
+        assert correct("1 idly") == "1 idli"
 
     def test_porotta_to_parotta(self):
-        assert correct("porotta") == "parotta"
+        assert correct("1 porotta") == "1 parotta"
 
     def test_dosai_single_token(self):
-        assert correct("dosai") == "dosa"
+        assert correct("1 dosai") == "1 dosa"
 
     def test_vaday_single_token(self):
-        assert correct("vaday") == "vada"
+        assert correct("1 vaday") == "1 vada"
 
     def test_doza_single_token(self):
-        assert correct("doza") == "dosa"
+        assert correct("1 doza") == "1 dosa"
 
 
 # ===========================================================================
@@ -283,27 +283,27 @@ class TestThreshold:
     def test_correction_accepted_at_threshold(self):
         """'dosai' vs 'dosa' ratio ≈ 0.89 — accepted at 0.72."""
         c = MenuVocabularyCorrector(threshold=0.72)
-        assert c.correct("dosai", ["dosa"]) == "dosa"
+        assert c.correct("1 dosai", ["dosa"]) == "1 dosa"
 
     def test_correction_rejected_below_threshold(self):
         """At threshold=0.99 only near-identical words match."""
         c = MenuVocabularyCorrector(threshold=0.99)
         # 'dosai' vs 'dosa' ratio ≈ 0.89 — rejected at 0.99
-        result = c.correct("dosai", ["dosa"])
-        assert result == "Unknown Menu Item"
+        result = c.correct("1 dosai", ["dosa"])
+        assert result == "1 dosai"
 
     def test_correction_accepted_at_lower_threshold(self):
         """At threshold=0.5 even moderately similar words are corrected."""
         c = MenuVocabularyCorrector(threshold=0.50)
         # 'tee' vs 'tea' ratio ≈ 0.667 — accepted at 0.5
-        result = c.correct("tee", ["tea", "coffee", "dosa"])
-        assert result == "tea"
+        result = c.correct("1 tee", ["tea", "coffee", "dosa"])
+        assert result == "1 tea"
 
     def test_low_ratio_word_corrected_at_low_threshold(self):
         """'cofi' vs 'coffee' ratio ≈ 0.60 — accepted at threshold=0.55."""
         c = MenuVocabularyCorrector(threshold=0.55)
-        result = c.correct("cofi", ["coffee", "tea", "dosa"])
-        assert result == "coffee"
+        result = c.correct("1 cofi", ["coffee", "tea", "dosa"])
+        assert result == "1 coffee"
 
     def test_threshold_property(self):
         c = MenuVocabularyCorrector(threshold=0.85)
@@ -338,21 +338,21 @@ class TestMultiWordMenuItems:
     def test_masala_word_matched_from_multiword_item(self):
         """'masla' should match 'masala' extracted from 'Masala Dosa'."""
         c = MenuVocabularyCorrector(threshold=0.72)
-        result = c.correct("masla dosa", ["Masala Dosa"])
-        assert result == "masala dosa"
+        result = c.correct("2 masla dosa", ["Masala Dosa"])
+        assert result == "2 masala dosa"
 
     def test_filter_word_matched_from_filter_coffee(self):
         """'filtir' should match 'filter' from 'Filter Coffee'."""
         c = MenuVocabularyCorrector(threshold=0.72)
-        result = c.correct("filtir coffee", ["Filter Coffee", "Coffee"])
-        assert result == "filter coffee"
+        result = c.correct("1 filtir coffee", ["Filter Coffee", "Coffee"])
+        assert result == "1 filter coffee"
 
     def test_words_from_multiple_menu_items_combined(self):
         """Vocabulary is the union of all words from all menu items."""
         menu = ["Masala Dosa", "Filter Coffee", "Plain Tea"]
         c = MenuVocabularyCorrector(threshold=0.72)
-        result = c.correct("masla cofee", menu)
-        assert result == "masala coffee"
+        result = c.correct("1 masla dosa 1 filtir cofee", menu)
+        assert result == "1 masala dosa 1 filter coffee"
 
 
 # ===========================================================================
@@ -372,16 +372,16 @@ class TestVocabularyAutoUpdate:
         """Mis-pronunciation of a new menu item is auto-corrected."""
         extended_menu = STANDARD_MENU + ["Lassi"]
         c = MenuVocabularyCorrector(threshold=0.72)
-        result = c.correct("lasi", extended_menu)
-        assert result == "lassi"
+        result = c.correct("1 lasi", extended_menu)
+        assert result == "1 lassi"
 
     def test_new_item_typo_without_static_dict_entry(self):
         """Corrector handles items unknown to the normalizer's static dict."""
         menu = ["Biriyani", "Roti", "Paneer"]
         c = MenuVocabularyCorrector(threshold=0.72)
         # 'biryani' is not in the normalizer dict — corrector handles it
-        result = c.correct("biryani", menu)
-        assert result == "biriyani"
+        result = c.correct("1 biryani", menu)
+        assert result == "1 biriyani"
 
 
 # ===========================================================================
@@ -403,21 +403,28 @@ class TestEdgeCases:
         assert result == "coffer dosai"
 
     def test_exact_match_not_modified(self):
-        assert correct("coffee") == "coffee"
+        assert correct("1 coffee") == "1 coffee"
 
     def test_exact_match_case_insensitive(self):
         """Tokens matching vocab exactly (case-insensitively) are unchanged."""
-        assert correct("Coffee") == "coffee"  # lowercased but not mis-corrected
+        assert correct("1 Coffee") == "1 coffee"
 
     def test_unrelated_word_returned_as_unknown(self):
-        """A word with no close match returns Unknown Menu Item."""
+        """A word with no close match returns original word."""
         result = correct("xylophone")
-        assert result == "Unknown Menu Item"
+        assert result == "xylophone"
 
     def test_correction_is_case_insensitive_input(self):
         """Input capitalisation does not prevent correction."""
-        result = correct("DOSAI")
-        assert result == "dosa"
+        result = correct("1 DOSAI")
+        assert result == "1 dosa"
+
+    def test_single_character_not_corrected(self):
+        """Single-character tokens are too short for reliable fuzzy matching."""
+        c = MenuVocabularyCorrector(threshold=0.72)
+        result = c.correct("a coffee", STANDARD_MENU)
+        # 'a' should not be corrected to 'chai' or anything else
+        assert "coffee" in result  # coffee is preserved
 
     def test_single_character_not_corrected(self):
         """Single-character tokens are too short for reliable fuzzy matching."""

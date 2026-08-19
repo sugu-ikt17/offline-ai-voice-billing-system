@@ -33,7 +33,7 @@ Preprocessing steps (independently configurable):
 2. **DC offset removal** — subtract arithmetic mean of samples.
 3. **High-pass filter** — 2nd-order Butterworth IIR filter ~80 Hz (removes rumble/hum).
 4. **Low-pass filter** — 2nd-order Butterworth IIR filter ~7500 Hz (removes high hiss).
-5. **Peak volume normalization** — target dBFS without clipping.
+5. **Peak volume normalization** — target -6 dBFS without clipping (6 dB headroom).
 6. **Conservative noise reduction** — smooth gain attenuation for noise frames.
 7. **Silence trimming** — leading/trailing silence trimmed with safety margin.
 """

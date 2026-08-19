@@ -49,6 +49,7 @@ NUMBER_TO_DIGIT_MAP: Final[dict[str, str]] = {
     "onnu": "1",
     "onna": "1",
     "ஒரு": "1",
+    "ஒன்று": "1",
     # 2
     "two": "2",
     "too": "2",
@@ -64,6 +65,7 @@ NUMBER_TO_DIGIT_MAP: Final[dict[str, str]] = {
     "munu": "3",
     "munuu": "3",
     "மூன்று": "3",
+    "மூனு": "3",
     # 4
     "four": "4",
     "for": "4",
@@ -75,6 +77,7 @@ NUMBER_TO_DIGIT_MAP: Final[dict[str, str]] = {
     "five": "5",
     "anju": "5",
     "ஐந்து": "5",
+    "அஞ்சு": "5",
     # 6
     "six": "6",
     "aaru": "6",
@@ -92,6 +95,7 @@ NUMBER_TO_DIGIT_MAP: Final[dict[str, str]] = {
     "onbadhu": "9",
     "ombodhu": "9",
     "ஒன்பது": "9",
+    "ஒம்போது": "9",
     # 10
     "ten": "10",
     "pathu": "10",
@@ -248,24 +252,34 @@ def _reorder_quantities_and_items(text: str) -> str:
     reordered_segments: list[str] = []
     i = 0
     n = len(segments)
+    consumed_indices: set[int] = set()
 
     while i < n:
+        if i in consumed_indices:
+            i += 1
+            continue
+
         seg = segments[i]
-        # Check pattern: items followed by quantity (and NOT preceded by quantity)
+        # Check pattern: items followed by quantity (and NOT preceded by an unconsumed quantity)
         if seg["type"] == "items":
-            has_preceding_quantity = (
-                i > 0 and segments[i - 1]["type"] == "quantity"
+            has_preceding_unconsumed_qty = (
+                i > 0
+                and segments[i - 1]["type"] == "quantity"
+                and (i - 1) not in consumed_indices
             )
-            has_following_quantity = (
-                i + 1 < n and segments[i + 1]["type"] == "quantity"
+            has_following_unconsumed_qty = (
+                i + 1 < n
+                and segments[i + 1]["type"] == "quantity"
+                and (i + 1) not in consumed_indices
             )
 
-            if has_following_quantity and not has_preceding_quantity:
+            if has_following_unconsumed_qty and not has_preceding_unconsumed_qty:
                 qty_seg = segments[i + 1]
                 # Reorder: quantity first, then item words
                 reordered_segments.append(qty_seg["value"])
                 reordered_segments.extend(seg["words"])
-                i += 2
+                consumed_indices.add(i + 1)
+                i += 1
                 continue
 
             reordered_segments.extend(seg["words"])

@@ -112,30 +112,49 @@ def process_order_text(
     t0 = time.perf_counter()
 
     from app.application.services.speech_service import _log_transcript_stage  # noqa: PLC0415
-    _log_transcript_stage("FINAL PARSER INPUT", text)
+    _log_transcript_stage("PARSER INPUT", text)
 
-    parsed_items = OrderParserService().parse(text)
+    # Pass vocabulary to parser for multiword and item boundary detection
+    menu_repo = MenuRepository(db)
+    menu_items = menu_repo.get_all()
+    vocab_list = [m.name for m in menu_items] if menu_items else None
+
+    parsed_result = OrderParserService().parse_with_details(text, vocabulary=vocab_list)
+    parsed_items = parsed_result.recognized_items
     t_parser = time.perf_counter() - t0
     profiler.end_stage("Parser")
 
+    _log_transcript_stage("PARSER OUTPUT", str(parsed_items))
+
     # Step 2 — match tokens against the menu database.
     t0 = time.perf_counter()
-    match_result = MenuMatcherService(MenuRepository(db)).match(parsed_items)
+    match_result = MenuMatcherService(menu_repo).match(parsed_items)
     t_matcher = time.perf_counter() - t0
+
+    _log_transcript_stage("MATCHER OUTPUT", f"Matched: {match_result.matched_items}\nUnmatched: {match_result.unmatched_items}")
 
     # Step 3 — generate the final bill.
     t0 = time.perf_counter()
     bill_result = BillGeneratorService().generate(match_result)
     t_generator = time.perf_counter() - t0
 
+    res_dict = bill_result.to_dict()
+    _log_transcript_stage("FINAL BILL", str(res_dict["bill"]))
+
     # Stage 10: Response
     profiler.start_stage("Response")
-    res_dict = bill_result.to_dict()
     profiler.end_stage("Response")
 
     total_order_time = time.perf_counter() - request_start
     logger.info(
-        "POST /orders/process complete — billing_parser=%.3fs menu_matcher=%.3fs bill_generator=%.3fs total=%.3fs",
+        "\n========================================\n"
+        "ORDER PROCESSING TIMINGS\n"
+        "========================================\n"
+        "PARSER : %.3fs\n"
+        "MATCHER: %.3fs\n"
+        "BILL   : %.3fs\n"
+        "TOTAL  : %.3fs\n"
+        "========================================",
         t_parser,
         t_matcher,
         t_generator,

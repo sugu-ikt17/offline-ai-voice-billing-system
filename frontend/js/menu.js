@@ -109,17 +109,18 @@ export function createMenuController({ Toast, LoadingOverlay, ConfirmModal, refr
   // ----- Table rendering -----
   function renderTable(items) {
     tableBody.innerHTML = "";
-    itemCount.textContent = items.length
-      ? `${items.length} item${items.length === 1 ? "" : "s"}`
+    const list = Array.isArray(items) ? items : (items && Array.isArray(items.items) ? items.items : []);
+    itemCount.textContent = list.length
+      ? `${list.length} item${list.length === 1 ? "" : "s"}`
       : "";
 
-    if (!items || items.length === 0) {
+    if (!list || list.length === 0) {
       emptyState.classList.remove("hidden");
       return;
     }
     emptyState.classList.add("hidden");
 
-    items.forEach((item) => {
+    list.forEach((item) => {
       const row = document.createElement("tr");
 
       const nameCell = document.createElement("td");

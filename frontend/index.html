@@ -62,14 +62,6 @@
             <span>Stop Recording</span>
           </button>
 
-          <button type="button" class="btn btn-secondary" id="send-voice-btn" disabled>
-            <span class="btn-spinner hidden" id="send-voice-spinner" aria-hidden="true"></span>
-            <svg class="btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-            <span>Send to Server</span>
-          </button>
         </div>
       </div>
 
@@ -94,7 +86,7 @@
           class="recognized-textbox"
           readonly
           rows="2"
-          placeholder="Recognized speech will appear here after sending recording to server..."
+          placeholder="Recognized speech will appear here after stopping the recording..."
         ></textarea>
       </div>
     </section>
@@ -111,7 +103,7 @@
 
       <div class="order-summary-body">
         <div class="workflow-empty-state" id="order-summary-empty">
-          <p class="empty-text">No voice order processed yet. Click <strong>Start Recording</strong> above to place an order.</p>
+          <p class="empty-text">No voice order processed yet. Click <strong>Start Recording</strong>, speak your order, then click <strong>Stop Recording</strong> — it submits automatically.</p>
         </div>
 
         <div class="processing-skeleton hidden" id="order-summary-skeleton">

@@ -20,7 +20,7 @@ from app.infrastructure.database.database import get_db
 from app.infrastructure.database.repositories.bill_repository import BillRepository
 from app.infrastructure.database.repositories.menu_repository import MenuRepository
 from app.infrastructure.database.repositories.order_repository import OrderRepository
-from app.infrastructure.speech_engine.faster_whisper_engine import FasterWhisperEngine
+from app.infrastructure.speech_engine.sarvam_engine import SarvamSpeechEngine
 
 
 # --- Repositories -----------------------------------------------------
@@ -42,12 +42,11 @@ def init_speech_service(menu_repository: MenuRepository | None = None) -> Speech
     """Pre-initialize and pre-load the singleton SpeechService during startup."""
     global _SPEECH_SERVICE_SINGLETON
     if _SPEECH_SERVICE_SINGLETON is None:
-        engine = FasterWhisperEngine(
-            model_name=settings.whisper_model_name,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-            beam_size=settings.whisper_beam_size,
-            language=settings.whisper_language or None,
+        engine = SarvamSpeechEngine(
+            api_key=settings.sarvam_api_key,
+            model=settings.sarvam_model,
+            language_code=settings.sarvam_language_code,
+            mode=settings.sarvam_mode,
         )
         _SPEECH_SERVICE_SINGLETON = SpeechService(engine=engine, menu_repository=menu_repository)
     _SPEECH_SERVICE_SINGLETON.load_model()
@@ -59,12 +58,11 @@ def get_speech_service(
 ) -> SpeechService:
     global _SPEECH_SERVICE_SINGLETON
     if _SPEECH_SERVICE_SINGLETON is None:
-        engine = FasterWhisperEngine(
-            model_name=settings.whisper_model_name,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-            beam_size=settings.whisper_beam_size,
-            language=settings.whisper_language or None,
+        engine = SarvamSpeechEngine(
+            api_key=settings.sarvam_api_key,
+            model=settings.sarvam_model,
+            language_code=settings.sarvam_language_code,
+            mode=settings.sarvam_mode,
         )
         _SPEECH_SERVICE_SINGLETON = SpeechService(engine=engine, menu_repository=menu_repository)
     else:

@@ -21,7 +21,7 @@ Menu Vocabulary Corrector:
 Audio Preprocessing (all steps independently toggled by env var):
   AUDIO_PREPROCESS_ENABLED         — master on/off switch (default: true)
   AUDIO_NORMALIZE_VOLUME           — peak-normalize to target dBFS (default: true)
-  AUDIO_NORMALIZE_TARGET_DBFS      — target peak level in dBFS (default: -3.0)
+  AUDIO_NORMALIZE_TARGET_DBFS      — target peak level in dBFS (default: -6.0)
   AUDIO_REMOVE_DC_OFFSET           — subtract mean sample value (default: true)
   AUDIO_REDUCE_NOISE               — spectral-subtraction noise reduction (default: true)
   AUDIO_NOISE_REDUCTION_STRENGTH   — noise gate alpha 0–1 (default: 0.15)
@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     tax_rate: float = 0.05  # 5% default tax
 
     # Faster-Whisper — override via WHISPER_MODEL_NAME / WHISPER_DEVICE / WHISPER_COMPUTE_TYPE env vars
+    # Default: base — fast CPU inference for short shop-order commands (3–6 s audio).
+    # For higher accuracy at the cost of latency, set WHISPER_MODEL_NAME=distil-large-v3.
     whisper_model_name: str = "distil-large-v3"
     whisper_device: str = "cuda"
     whisper_compute_type: str = "float16"
@@ -65,6 +67,12 @@ class Settings(BaseSettings):
     # ISO language code. Avoids per-request language detection overhead.
     # Set to empty string or 'auto' to re-enable automatic detection.
     whisper_language: str = "ta"
+
+    # Sarvam AI STT settings (Cloud-based STT requiring active internet connectivity)
+    sarvam_api_key: str = ""
+    sarvam_model: str = "saaras:v3"
+    sarvam_language_code: str = "ta-IN"
+    sarvam_mode: str = "transcribe"
 
     # Audio uploads (temporary storage before transcription)
     audio_upload_dir: str = str(BASE_DIR / "data" / "audio_uploads")
@@ -84,8 +92,11 @@ class Settings(BaseSettings):
     audio_preprocess_enabled: bool = True
 
     #: Peak-volume normalization — brings quiet recordings up to target level.
+    #: -6.0 dBFS gives 6 dB of headroom above IIR filter transients and noise-gate
+    #: transitions that can momentarily exceed the pre-filter peak.  -3.0 was too
+    #: close to 0 dBFS and caused downstream clipping artifacts.
     audio_normalize_volume: bool = True
-    audio_normalize_target_dbfs: float = -3.0  # target peak in dBFS
+    audio_normalize_target_dbfs: float = -6.0  # target peak in dBFS (was -3.0)
 
     #: DC offset removal — subtracts the mean sample value (cheap, one pass).
     audio_remove_dc_offset: bool = True
@@ -112,7 +123,13 @@ class Settings(BaseSettings):
 
     #: If the audio peak is already above this level, skip preprocessing to
     #: avoid double-processing clean recordings.  Set to -0.1 to always process.
-    audio_quality_skip_threshold_dbfs: float = -6.0
+    #: IMPORTANT: must be above the normalize_target_dbfs (-6.0 dBFS) so that
+    #: recordings that are already loud (e.g. clipping at 0.0 dBFS from browser
+    #: AGC) are NOT silently skipped — they still need DC removal and filtering.
+    #: Previous value of -6.0 dBFS matched the normalize target exactly, causing
+    #: near-full-scale recordings to bypass all preprocessing and reach Whisper
+    #: with distortion intact.
+    audio_quality_skip_threshold_dbfs: float = -1.0  # was -6.0; skip only near-true-clipping
 
     # ----------------------------------------------------------------
     # Performance / Debug

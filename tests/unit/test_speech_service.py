@@ -11,7 +11,6 @@ import pytest
 
 from app.application.services.speech_service import SpeechService
 from app.core.exceptions import SpeechRecognitionException
-from app.infrastructure.speech_engine.faster_whisper_engine import FasterWhisperEngine
 
 
 def _write_minimal_wav(path) -> None:

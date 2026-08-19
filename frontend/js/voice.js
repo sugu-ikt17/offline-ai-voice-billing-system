@@ -115,8 +115,6 @@ export function createVoiceController({ Toast, showReceipt }) {
   // DOM Cache - Voice Recording & Text
   const startBtn = document.getElementById("start-rec-btn");
   const stopBtn = document.getElementById("stop-rec-btn");
-  const sendBtn = document.getElementById("send-voice-btn");
-  const sendSpinner = document.getElementById("send-voice-spinner");
   const timerEl = document.getElementById("recording-timer");
   const statusBadge = document.getElementById("voice-status-badge");
   const statusText = document.getElementById("voice-status-text");
@@ -286,7 +284,10 @@ export function createVoiceController({ Toast, showReceipt }) {
         audio: {
           noiseSuppression: true,
           echoCancellation: true,
-          autoGainControl: true,
+          // autoGainControl intentionally disabled: browser AGC drives recordings
+          // to 0.0 dBFS which causes clipping/distortion before Whisper inference.
+          // The backend AudioPreprocessor normalises to a safe -6 dBFS target.
+          autoGainControl: false,
           channelCount: 1,
         },
       });
@@ -339,24 +340,21 @@ export function createVoiceController({ Toast, showReceipt }) {
         setStatus("idle", "Idle");
         startBtn.disabled = false;
         stopBtn.disabled = true;
-        sendBtn.disabled = true;
         return;
       }
 
       const rawBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
       setStatus("processing", "Processing audio...");
 
-      // Convert to 16-bit PCM mono WAV for Whisper.cpp compatibility
+      // Convert to 16-bit PCM mono WAV for Whisper/Sarvam compatibility
       currentWavBlob = await blobToWavBlob(rawBlob);
 
       currentPlaybackUrl = URL.createObjectURL(currentWavBlob);
       audioPlayback.src = currentPlaybackUrl;
       playbackContainer.classList.remove("hidden");
 
-      setStatus("ready", "Recording Ready — click Send");
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      sendBtn.disabled = false;
+      // ── Automatic upload: no button click required ──────────────────────
+      await _uploadAndProcess();
     };
 
     mediaRecorder.start(100);
@@ -365,7 +363,6 @@ export function createVoiceController({ Toast, showReceipt }) {
     setStatus("recording", "Recording...");
     startBtn.disabled = true;
     stopBtn.disabled = false;
-    sendBtn.disabled = true;
   }
 
   /** Step 2: Stop Recording */
@@ -375,12 +372,12 @@ export function createVoiceController({ Toast, showReceipt }) {
     }
   }
 
-  /** Step 3: Upload audio to Whisper.cpp backend & process the order.
+  /** Upload WAV blob to Sarvam STT backend & process the order automatically.
    *
+   * Called internally from onstop — never requires a button click.
    * Always sends the WAV blob to POST /api/v1/speech/transcribe.
-   * Never uses browser SpeechRecognition — Whisper.cpp is more accurate.
    */
-  async function handleSendToServer() {
+  async function _uploadAndProcess() {
     if (!currentWavBlob) {
       Toast.error("No recording available. Please record audio first.");
       return;
@@ -388,30 +385,30 @@ export function createVoiceController({ Toast, showReceipt }) {
 
     startBtn.disabled = true;
     stopBtn.disabled = true;
-    sendBtn.disabled = true;
-    sendSpinner.classList.remove("hidden");
-    setStatus("processing", "Uploading to Whisper...");
+    setStatus("processing", "Sending to server...");
     recognizedTextEl.value = "";
-    recognizedTextEl.placeholder = "Transcribing with Whisper.cpp…";
+    recognizedTextEl.placeholder = "Processing voice order...";
     showProcessingSkeletons();
 
     try {
-      // ── Step 3a: Whisper.cpp transcription ──────────────────────────────
-      setStatus("processing", "Transcribing with Whisper...");
+      // ── Step 1: Sarvam STT transcription ────────────────────────────────
+      setStatus("processing", "Transcribing...");
       const transcribeResult = await transcribeVoiceWhisper(currentWavBlob, "recording.wav");
       const text = (transcribeResult && transcribeResult.transcript) || "";
 
       if (!text) {
-        Toast.error("Whisper returned an empty transcript. Please try again.");
+        Toast.error("Speech engine returned an empty transcript. Please try again.");
         hideSkeletons();
-        setStatus("ready", "Recording Ready — click Send");
+        recognizedTextEl.placeholder = "Recognized speech will appear here after stopping the recording...";
+        setStatus("idle", "Workflow Ready");
+        startBtn.disabled = false;
         return;
       }
 
       recognizedTextEl.value = text;
       recognizedTextEl.placeholder = "";
 
-      // ── Step 3b: Order processing & menu matching ───────────────────────
+      // ── Step 2: Order processing & menu matching ─────────────────────────
       setStatus("processing", "Processing Order...");
       const processedData = await processOrder(text);
 
@@ -422,14 +419,12 @@ export function createVoiceController({ Toast, showReceipt }) {
       console.error("Workflow execution error:", err);
       hideSkeletons();
       resetWorkflowDisplays();
-      recognizedTextEl.placeholder = "";
+      recognizedTextEl.placeholder = "Recognized speech will appear here after stopping the recording...";
       Toast.error(err.message || "Failed to process voice order.");
-      setStatus("ready", "Recording Ready — click Send");
+      setStatus("idle", "Workflow Ready");
     } finally {
-      sendSpinner.classList.add("hidden");
       startBtn.disabled = false;
       stopBtn.disabled = true;
-      sendBtn.disabled = false;
     }
   }
 
@@ -445,7 +440,6 @@ export function createVoiceController({ Toast, showReceipt }) {
   return {
     handleStartRecording,
     handleStopRecording,
-    handleSendToServer,
     handleCompleteOrder,
   };
 }

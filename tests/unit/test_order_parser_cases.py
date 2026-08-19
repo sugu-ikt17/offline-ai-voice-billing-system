@@ -217,3 +217,155 @@ def test_quantity_words_contains_all_english():
     expected = {"one", "two", "three", "four", "five",
                 "six", "seven", "eight", "nine", "ten"}
     assert expected.issubset(QUANTITY_WORDS.keys())
+
+
+# ---------------------------------------------------------------------------
+# Required Both-Order Tests (Quantity-first & Item-first)
+# ---------------------------------------------------------------------------
+
+def test_quantity_first_2_tea_3_dosa():
+    result = parser.parse("2 tea 3 dosa")
+    assert result == [
+        {"item": "tea", "quantity": 2},
+        {"item": "dosa", "quantity": 3},
+    ]
+
+
+def test_item_first_tea_2_dosa_3():
+    result = parser.parse("tea 2 dosa 3")
+    assert result == [
+        {"item": "tea", "quantity": 2},
+        {"item": "dosa", "quantity": 3},
+    ]
+
+
+def test_quantity_first_3_coffee_2_tea_4_samosa():
+    result = parser.parse("3 coffee 2 tea 4 samosa")
+    assert result == [
+        {"item": "coffee", "quantity": 3},
+        {"item": "tea", "quantity": 2},
+        {"item": "samosa", "quantity": 4},
+    ]
+
+
+def test_item_first_coffee_3_tea_2_samosa_4():
+    result = parser.parse("coffee 3 tea 2 samosa 4")
+    assert result == [
+        {"item": "coffee", "quantity": 3},
+        {"item": "tea", "quantity": 2},
+        {"item": "samosa", "quantity": 4},
+    ]
+
+
+def test_connector_2_tea_and_3_dosa():
+    result = parser.parse("2 tea and 3 dosa")
+    assert result == [
+        {"item": "tea", "quantity": 2},
+        {"item": "dosa", "quantity": 3},
+    ]
+
+
+def test_number_words_two_tea_three_dosa():
+    result = parser.parse("two tea three dosa")
+    assert result == [
+        {"item": "tea", "quantity": 2},
+        {"item": "dosa", "quantity": 3},
+    ]
+
+
+def test_number_words_item_first_tea_two_and_dosa_three():
+    from app.application.services.speech_normalizer import normalize
+    norm = normalize("tea two and dosa three")
+    result = parser.parse(norm)
+    assert result == [
+        {"item": "tea", "quantity": 2},
+        {"item": "dosa", "quantity": 3},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Strict Local Adjacency Regression Tests (Required Specs)
+# ---------------------------------------------------------------------------
+
+def test_strict_adjacency_1_2_dosa():
+    assert parser.parse("2 dosa") == [{"item": "dosa", "quantity": 2}]
+
+
+def test_strict_adjacency_2_dosa_2():
+    assert parser.parse("dosa 2") == [{"item": "dosa", "quantity": 2}]
+
+
+def test_strict_adjacency_3_two_dosa():
+    assert parser.parse("two dosa") == [{"item": "dosa", "quantity": 2}]
+
+
+def test_strict_adjacency_4_dosa_two():
+    assert parser.parse("dosa two") == [{"item": "dosa", "quantity": 2}]
+
+
+def test_strict_adjacency_5_2_coffee_4_dosa():
+    assert parser.parse("2 coffee 4 dosa") == [
+        {"item": "coffee", "quantity": 2},
+        {"item": "dosa", "quantity": 4},
+    ]
+
+
+def test_strict_adjacency_6_2_coffee_thank_you_4_dosa():
+    assert parser.parse("2 coffee thank you 4 dosa") == [
+        {"item": "coffee", "quantity": 2},
+        {"item": "dosa", "quantity": 4},
+    ]
+
+
+def test_strict_adjacency_7_2_thank_you_dosa_no_item():
+    assert parser.parse("2 thank you dosa") == []
+
+
+def test_strict_adjacency_8_dosa_thank_you_2_no_item():
+    assert parser.parse("dosa thank you 2") == []
+
+
+def test_strict_adjacency_9_thank_you_2_dosa():
+    assert parser.parse("thank you 2 dosa") == [{"item": "dosa", "quantity": 2}]
+
+
+def test_strict_adjacency_10_2_dosa_thank_you():
+    assert parser.parse("2 dosa thank you") == [{"item": "dosa", "quantity": 2}]
+
+
+def test_strict_adjacency_11_i_am_2_dosa():
+    assert parser.parse("I am 2 dosa") == [{"item": "dosa", "quantity": 2}]
+
+
+def test_strict_adjacency_12_2_i_am_dosa_no_item():
+    assert parser.parse("2 I am dosa") == []
+
+
+def test_dynamic_vocabulary_all_menu_items():
+    vocab = ["Tea", "Coffee", "Dosa", "Idly", "Puri", "Vada", "Samosa", "Pongal", "Poori", "Chapati"]
+    
+    # QTY ITEM
+    assert parser.parse_with_details("2 tea", vocabulary=vocab).recognized_items == [{"item": "tea", "quantity": 2}]
+    assert parser.parse_with_details("3 coffee", vocabulary=vocab).recognized_items == [{"item": "coffee", "quantity": 3}]
+    assert parser.parse_with_details("4 dosa", vocabulary=vocab).recognized_items == [{"item": "dosa", "quantity": 4}]
+    assert parser.parse_with_details("5 idly", vocabulary=vocab).recognized_items == [{"item": "idly", "quantity": 5}]
+    assert parser.parse_with_details("2 puri", vocabulary=vocab).recognized_items == [{"item": "puri", "quantity": 2}]
+    assert parser.parse_with_details("3 vada", vocabulary=vocab).recognized_items == [{"item": "vada", "quantity": 3}]
+    assert parser.parse_with_details("4 samosa", vocabulary=vocab).recognized_items == [{"item": "samosa", "quantity": 4}]
+    assert parser.parse_with_details("2 pongal", vocabulary=vocab).recognized_items == [{"item": "pongal", "quantity": 2}]
+    assert parser.parse_with_details("3 poori", vocabulary=vocab).recognized_items == [{"item": "poori", "quantity": 3}]
+    assert parser.parse_with_details("5 chapati", vocabulary=vocab).recognized_items == [{"item": "chapati", "quantity": 5}]
+
+    # ITEM QTY
+    assert parser.parse_with_details("tea 2", vocabulary=vocab).recognized_items == [{"item": "tea", "quantity": 2}]
+    assert parser.parse_with_details("coffee 3", vocabulary=vocab).recognized_items == [{"item": "coffee", "quantity": 3}]
+    assert parser.parse_with_details("dosa 4", vocabulary=vocab).recognized_items == [{"item": "dosa", "quantity": 4}]
+    assert parser.parse_with_details("idly 5", vocabulary=vocab).recognized_items == [{"item": "idly", "quantity": 5}]
+    assert parser.parse_with_details("puri 2", vocabulary=vocab).recognized_items == [{"item": "puri", "quantity": 2}]
+    assert parser.parse_with_details("vada 3", vocabulary=vocab).recognized_items == [{"item": "vada", "quantity": 3}]
+    assert parser.parse_with_details("samosa 4", vocabulary=vocab).recognized_items == [{"item": "samosa", "quantity": 4}]
+    assert parser.parse_with_details("pongal 2", vocabulary=vocab).recognized_items == [{"item": "pongal", "quantity": 2}]
+    assert parser.parse_with_details("poori 3", vocabulary=vocab).recognized_items == [{"item": "poori", "quantity": 3}]
+    assert parser.parse_with_details("chapati 5", vocabulary=vocab).recognized_items == [{"item": "chapati", "quantity": 5}]
+
+
