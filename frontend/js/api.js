@@ -11,10 +11,14 @@ const getBaseUrl = () => {
   if (
     typeof window !== "undefined" &&
     window.location &&
-    window.location.origin &&
-    window.location.origin !== "null" &&
+    window.location.hostname &&
     window.location.protocol !== "file:"
   ) {
+    // If frontend is served on a different port (e.g., port 5500 or 3000 via python http.server),
+    // point API requests to FastAPI backend on port 8000.
+    if (window.location.port && window.location.port !== "8000") {
+      return `${window.location.protocol}//${window.location.hostname}:8000`;
+    }
     return window.location.origin;
   }
   return "http://127.0.0.1:8000";
@@ -52,7 +56,11 @@ async function handleResponse(response) {
 /** Backend health check, used to drive the header status indicator. */
 export async function checkHealth() {
   const response = await fetch(`${ROOT_URL}/`);
-  return handleResponse(response);
+  const body = await handleResponse(response);
+  if (!body || body.message !== "Offline AI Voice Billing API") {
+    throw new Error("Invalid backend health response");
+  }
+  return body;
 }
 
 /** GET /menu — fetch all menu items. */
